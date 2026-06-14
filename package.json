@@ -1,0 +1,107 @@
+{
+  "name": "timetrack",
+  "displayName": "TimeTrack",
+  "description": "Track time spent in each file across local, SSH, WSL, and Dev Container environments",
+  "version": "0.1.0",
+  "publisher": "moonchasing",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "timetrack.showReport",
+        "title": "TimeTrack: Show Report"
+      },
+      {
+        "command": "timetrack.pauseTracking",
+        "title": "TimeTrack: Pause Tracking"
+      },
+      {
+        "command": "timetrack.resumeTracking",
+        "title": "TimeTrack: Resume Tracking"
+      },
+      {
+        "command": "timetrack.exportData",
+        "title": "TimeTrack: Export Data (JSON)"
+      },
+      {
+        "command": "timetrack.today",
+        "title": "TimeTrack: Show Today's Summary"
+      }
+    ],
+    "configuration": {
+      "title": "TimeTrack",
+      "properties": {
+        "timetrack.idleTimeout": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0.5,
+          "maximum": 30,
+          "description": "Minutes of inactivity before tracking pauses"
+        },
+        "timetrack.heartbeatInterval": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "maximum": 120,
+          "description": "Seconds between heartbeat ticks (session end_time updates)"
+        },
+        "timetrack.excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/.git/**",
+            "**/node_modules/**"
+          ],
+          "description": "Glob patterns for files to exclude from tracking"
+        },
+        "timetrack.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show time tracking in status bar"
+        },
+        "timetrack.trackUntitled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Track time in untitled/unsaved files"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "build:prod": "node esbuild.config.mjs --production",
+    "watch": "node esbuild.config.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package": "npm run build:prod && vsce package",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "chart.js": "^4.4.7",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

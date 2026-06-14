@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTrack Report</title>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>TimeTrack Report</h1>
+            <div class="controls">
+                <input type="date" id="datePicker" />
+            </div>
+        </header>
+        <section class="summary-cards">
+            <div class="card">
+                <span class="card-label">Total Time</span>
+                <span class="card-value" id="totalTime">--</span>
+            </div>
+            <div class="card">
+                <span class="card-label">Files</span>
+                <span class="card-value" id="fileCount">--</span>
+            </div>
+            <div class="card">
+                <span class="card-label">Lines Changed</span>
+                <span class="card-value" id="linesChanged">--</span>
+            </div>
+        </section>
+        <section class="charts">
+            <div class="chart-container">
+                <h2>This Week</h2>
+                <canvas id="weeklyChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Top Files Today</h2>
+                <canvas id="filesChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Hourly Timeline</h2>
+                <canvas id="timelineChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Line Changes</h2>
+                <canvas id="lineChangesChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Projects</h2>
+                <canvas id="projectsChart"></canvas>
+            </div>
+        </section>
+    </div>
+</body>
+</html>
