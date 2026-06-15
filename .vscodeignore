@@ -1,10 +1,13 @@
 .vscode-test/
-dist/
-node_modules/
 src/
 test/
+node_modules/
 .gitignore
 tsconfig.json
 tsconfig.webview.json
 esbuild.config.mjs
+vitest.config.ts
+package-lock.json
 **/*.map
+**/*.ts
+!dist/**

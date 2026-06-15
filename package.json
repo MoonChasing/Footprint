@@ -12,6 +12,7 @@
     "Other"
   ],
   "extensionKind": [
+    "ui",
     "workspace"
   ],
   "activationEvents": [
@@ -92,10 +93,9 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0"
+    "sql.js": "^1.11.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20.17.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.2.0",

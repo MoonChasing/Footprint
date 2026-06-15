@@ -9,31 +9,35 @@ import { EnvironmentContext, RemoteType } from '../types';
 export function getEnvironmentContext(): EnvironmentContext {
     const machineName = os.hostname();
     const remoteName = vscode.env.remoteName;
-    const remoteAuthority = vscode.env.remoteAuthority;
 
     let remoteType: RemoteType = 'local';
     let remoteHost: string | null = null;
 
+    if (!remoteName || remoteName === 'undefined') {
+        // Running locally, no remote connection
+        return { machineName, remoteType: 'local', remoteHost: null };
+    }
+
+    // Extract remote authority from workspace folder URI
+    // URI authority format: "ssh-remote+hostname", "wsl+DistroName", etc.
+    const authority = vscode.workspace.workspaceFolders?.[0]?.uri.authority ?? '';
+
     if (remoteName === 'ssh-remote') {
         remoteType = 'ssh-remote';
-        // remoteAuthority format: "ssh-remote+hostname[:port]"
-        if (remoteAuthority) {
-            const match = remoteAuthority.match(/^ssh-remote\+(.+?)(?::(\d+))?$/);
-            remoteHost = match ? match[1] : remoteAuthority.replace('ssh-remote+', '');
-        }
+        // authority format: "ssh-remote+hostname" or "ssh-remote+hostname:port"
+        const match = authority.match(/^ssh-remote\+(.+?)(?::(\d+))?$/);
+        remoteHost = match ? match[1] : authority.replace('ssh-remote+', '') || null;
     } else if (remoteName === 'wsl') {
         remoteType = 'wsl';
-        // remoteAuthority format: "wsl+DistroName"
-        if (remoteAuthority) {
-            remoteHost = remoteAuthority.replace('wsl+', '');
-        }
+        // authority format: "wsl+DistroName"
+        remoteHost = authority.replace('wsl+', '') || null;
     } else if (remoteName === 'dev-container' || remoteName === 'attached-container') {
         remoteType = 'dev-container';
-        // For containers, use the hostname (container ID) as identifier
-        remoteHost = machineName;
+        // For containers, use the authority or fallback to hostname
+        remoteHost = authority.replace(/^dev-container\+/, '').replace(/^attached-container\+/, '') || machineName;
     } else if (remoteName === 'codespaces') {
         remoteType = 'codespaces';
-        remoteHost = remoteAuthority?.replace('codespaces+', '') ?? null;
+        remoteHost = authority.replace('codespaces+', '') || null;
     }
 
     return { machineName, remoteType, remoteHost };

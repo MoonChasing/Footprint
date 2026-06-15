@@ -4,7 +4,7 @@ import * as path from 'path';
 import { ActivityTracker } from './tracker/ActivityTracker';
 import { StatusBarController } from './ui/StatusBarController';
 import { ReportPanel } from './ui/ReportPanel';
-import { getDatabase, closeDatabase, getDatabasePath } from './database/Database';
+import { initDatabase, getDatabase, closeDatabase, getDatabasePath } from './database/Database';
 import { getTodayTotalMs, exportAllData } from './database/queries';
 import { getConfig } from './config';
 
@@ -12,12 +12,12 @@ let tracker: ActivityTracker | undefined;
 let statusBar: StatusBarController | undefined;
 let reportPanel: ReportPanel | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('[TimeTrack] Extension activating...');
 
     // Initialize database (creates ~/.timetrack/data.db if needed)
     try {
-        getDatabase();
+        await initDatabase(context.extensionPath);
     } catch (e) {
         vscode.window.showErrorMessage(`TimeTrack: Failed to initialize database: ${e}`);
         return;
@@ -118,7 +118,7 @@ export function deactivate() {
     // Tracker disposal handles closing sessions and flushing line changes
     // (done via context.subscriptions)
 
-    // Close database connection
+    // Close database connection and flush to disk
     closeDatabase();
 
     console.log('[TimeTrack] Extension deactivated.');

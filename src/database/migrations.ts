@@ -1,20 +1,20 @@
-import Database from 'better-sqlite3';
+import { Database as SqlJsDatabase } from 'sql.js';
 
 const CURRENT_VERSION = 1;
 
 /**
  * Run all pending database migrations.
  */
-export function runMigrations(db: Database.Database): void {
+export function runMigrations(db: SqlJsDatabase): void {
     // Create schema_version table if it doesn't exist
-    db.exec(`
+    db.run(`
         CREATE TABLE IF NOT EXISTS schema_version (
             version INTEGER NOT NULL
         )
     `);
 
-    const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as { version: number } | undefined;
-    const currentVersion = row?.version ?? 0;
+    const result = db.exec('SELECT version FROM schema_version LIMIT 1');
+    const currentVersion = result.length > 0 ? (result[0].values[0][0] as number) : 0;
 
     if (currentVersion < 1) {
         migrateToV1(db);
@@ -22,14 +22,14 @@ export function runMigrations(db: Database.Database): void {
 
     // Update version
     if (currentVersion === 0) {
-        db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(CURRENT_VERSION);
+        db.run('INSERT INTO schema_version (version) VALUES (?)', [CURRENT_VERSION]);
     } else if (currentVersion < CURRENT_VERSION) {
-        db.prepare('UPDATE schema_version SET version = ?').run(CURRENT_VERSION);
+        db.run('UPDATE schema_version SET version = ?', [CURRENT_VERSION]);
     }
 }
 
-function migrateToV1(db: Database.Database): void {
-    db.exec(`
+function migrateToV1(db: SqlJsDatabase): void {
+    db.run(`
         CREATE TABLE IF NOT EXISTS sessions (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             start_time    INTEGER NOT NULL,
@@ -44,8 +44,10 @@ function migrateToV1(db: Database.Database): void {
             language_id   TEXT,
             window_id     TEXT NOT NULL,
             is_active     INTEGER NOT NULL DEFAULT 1
-        );
+        )
+    `);
 
+    db.run(`
         CREATE TABLE IF NOT EXISTS line_changes (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp     INTEGER NOT NULL,
@@ -56,13 +58,13 @@ function migrateToV1(db: Database.Database): void {
             file_path     TEXT NOT NULL,
             lines_added   INTEGER NOT NULL DEFAULT 0,
             lines_deleted INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_sessions_time ON sessions(start_time, end_time);
-        CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path, start_time);
-        CREATE INDEX IF NOT EXISTS idx_sessions_machine ON sessions(machine_name, remote_type);
-        CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(is_active) WHERE is_active = 1;
-        CREATE INDEX IF NOT EXISTS idx_line_changes_time ON line_changes(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_line_changes_file ON line_changes(file_path, timestamp);
+        )
     `);
+
+    db.run('CREATE INDEX IF NOT EXISTS idx_sessions_time ON sessions(start_time, end_time)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path, start_time)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_sessions_machine ON sessions(machine_name, remote_type)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(is_active) WHERE is_active = 1');
+    db.run('CREATE INDEX IF NOT EXISTS idx_line_changes_time ON line_changes(timestamp)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_line_changes_file ON line_changes(file_path, timestamp)');
 }

@@ -10,7 +10,7 @@ const extensionOptions = {
     entryPoints: ['src/extension.ts'],
     bundle: true,
     outfile: 'dist/extension.js',
-    external: ['vscode', 'better-sqlite3'],
+    external: ['vscode'],
     format: 'cjs',
     platform: 'node',
     target: 'node18',
@@ -55,6 +55,14 @@ async function build() {
         copyFileSync('src/webview/styles.css', 'dist/webview/styles.css');
     } catch (e) {
         // Assets may not exist yet during initial scaffold
+    }
+
+    // Copy sql.js WASM binary to dist/
+    try {
+        copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', 'dist/sql-wasm.wasm');
+        console.log('[build] Copied sql-wasm.wasm to dist/');
+    } catch (e) {
+        console.warn('[build] Warning: Could not copy sql-wasm.wasm:', e);
     }
 }
 
