@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { PendingLineChange, EnvironmentContext } from '../types';
 import { getDatabase } from '../database/Database';
 import { insertLineChange } from '../database/queries';
-import { getProjectContext } from '../env/EnvironmentInfo';
 
 /**
  * Accumulates line change counts per file in memory,
@@ -29,8 +28,9 @@ export class LineChangeCounter implements vscode.Disposable {
      * Process a text document change event.
      */
     private onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
-        // Skip non-file schemes (output panels, git diff, etc.)
-        if (event.document.uri.scheme !== 'file') {
+        // Skip non-trackable schemes (output panels, git diff, etc.)
+        const scheme = event.document.uri.scheme;
+        if (scheme !== 'file' && scheme !== 'vscode-remote') {
             return;
         }
 
@@ -97,8 +97,8 @@ export class LineChangeCounter implements vscode.Disposable {
     private writeToDb(filePath: string, entry: PendingLineChange): void {
         try {
             const db = getDatabase();
-            const fileUri = vscode.Uri.file(filePath);
-            const project = getProjectContext(fileUri);
+            // Use workspace folders to find project context by path prefix matching
+            const project = this.getProjectForFile(filePath);
 
             insertLineChange(db, {
                 timestamp: Date.now(),
@@ -114,6 +114,22 @@ export class LineChangeCounter implements vscode.Disposable {
             // Don't crash the extension on DB write failure
             console.error('[TimeTrack] Failed to write line changes:', e);
         }
+    }
+
+    private getProjectForFile(filePath: string): { projectPath: string; projectName: string } {
+        const folders = vscode.workspace.workspaceFolders;
+        if (folders) {
+            for (const folder of folders) {
+                const folderPath = folder.uri.fsPath || folder.uri.path;
+                if (filePath.startsWith(folderPath)) {
+                    return { projectPath: folderPath, projectName: folder.name };
+                }
+            }
+        }
+        return {
+            projectPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? 'unknown',
+            projectName: vscode.workspace.name ?? 'Unknown',
+        };
     }
 
     dispose(): void {

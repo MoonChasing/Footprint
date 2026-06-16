@@ -243,7 +243,36 @@ function renderLineChangesChart(data: FileSummary[]) {
     const canvas = document.getElementById('lineChangesChart') as HTMLCanvasElement;
     if (lineChangesChart) lineChangesChart.destroy();
 
-    const labels = data.map(f => f.fileName);
+    // Only show the basename (e.g. "ad.h"), not the full path
+    const labels = data.map(f => {
+        const name = f.fileName || f.filePath || '';
+        const sep = name.lastIndexOf('/') >= 0 ? '/' : '\\';
+        return name.split(sep).pop() || name;
+    });
+
+    // Custom plugin to draw value labels on bars
+    const dataLabelsPlugin = {
+        id: 'lineChangesDataLabels',
+        afterDatasetsDraw(chart: Chart) {
+            const ctx = chart.ctx;
+            chart.data.datasets.forEach((dataset, dsIndex) => {
+                const meta = chart.getDatasetMeta(dsIndex);
+                meta.data.forEach((bar, index) => {
+                    const value = dataset.data[index] as number;
+                    if (value === 0) return;
+                    ctx.save();
+                    ctx.fillStyle = getComputedStyle(canvas).color || '#ccc';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    const x = (bar as any).x + 4;
+                    const y = (bar as any).y;
+                    ctx.fillText(String(value), x, y);
+                    ctx.restore();
+                });
+            });
+        }
+    };
 
     lineChangesChart = new Chart(canvas, {
         type: 'bar',
@@ -280,7 +309,8 @@ function renderLineChangesChart(data: FileSummary[]) {
                     title: { display: true, text: 'Lines' },
                 }
             }
-        }
+        },
+        plugins: [dataLabelsPlugin as any],
     });
 }
 

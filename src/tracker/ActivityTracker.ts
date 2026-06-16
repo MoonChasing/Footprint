@@ -114,7 +114,8 @@ export class ActivityTracker implements vscode.Disposable {
         // Text document changes (idle reset + line counting)
         this.disposables.push(
             vscode.workspace.onDidChangeTextDocument(event => {
-                if (event.document.uri.scheme === 'file') {
+                const scheme = event.document.uri.scheme;
+                if (scheme === 'file' || scheme === 'vscode-remote') {
                     this.idleDetector.recordActivity();
                 }
             })
@@ -273,13 +274,15 @@ export class ActivityTracker implements vscode.Disposable {
             return false;
         }
 
-        // Only track file:// scheme
-        if (document.uri.scheme !== 'file') {
+        // Track file:// (local) and vscode-remote:// (SSH, WSL, container) schemes
+        const trackableSchemes = ['file', 'vscode-remote'];
+        if (!trackableSchemes.includes(document.uri.scheme)) {
             return false;
         }
 
         // Check exclude patterns
-        if (shouldExcludeFile(document.uri.fsPath, config.excludePatterns)) {
+        const filePath = document.uri.fsPath || document.uri.path;
+        if (shouldExcludeFile(filePath, config.excludePatterns)) {
             return false;
         }
 
