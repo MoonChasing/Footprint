@@ -43,6 +43,15 @@ export class IdleDetector implements Disposable {
     }
 
     /**
+     * Timestamp of the user's most recent activity.
+     * Use this — not Date.now() — when stamping session end_time, so that
+     * idle/blur transitions don't inflate the session by up to idleTimeout.
+     */
+    get lastActivity(): number {
+        return this.lastActivityTime;
+    }
+
+    /**
      * Update the idle timeout (e.g., when config changes).
      */
     updateTimeout(minutes: number): void {

@@ -10,7 +10,10 @@ const extensionOptions = {
     entryPoints: ['src/extension.ts'],
     bundle: true,
     outfile: 'dist/extension.js',
-    external: ['vscode'],
+    // 'vscode' is provided by the runtime; 'better-sqlite3' is a native
+    // module — keep it external so esbuild doesn't try to bundle the .node
+    // binary. The published vsix carries node_modules/better-sqlite3/ alongside.
+    external: ['vscode', 'better-sqlite3'],
     format: 'cjs',
     platform: 'node',
     target: 'node18',
@@ -55,14 +58,6 @@ async function build() {
         copyFileSync('src/webview/styles.css', 'dist/webview/styles.css');
     } catch (e) {
         // Assets may not exist yet during initial scaffold
-    }
-
-    // Copy sql.js WASM binary to dist/
-    try {
-        copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', 'dist/sql-wasm.wasm');
-        console.log('[build] Copied sql-wasm.wasm to dist/');
-    } catch (e) {
-        console.warn('[build] Warning: Could not copy sql-wasm.wasm:', e);
     }
 }
 

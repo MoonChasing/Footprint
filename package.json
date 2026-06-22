@@ -12,8 +12,7 @@
     "Other"
   ],
   "extensionKind": [
-    "ui",
-    "workspace"
+    "ui"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -89,13 +88,16 @@
     "watch": "node esbuild.config.mjs --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "npm run build:prod && vsce package --allow-missing-repository",
+    "rebuild:native": "electron-rebuild -v 37.3.1 -f -w better-sqlite3",
+    "package": "npm run build:prod && npm run rebuild:native && vsce package --allow-missing-repository",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "sql.js": "^1.11.0"
+    "better-sqlite3": "^11.10.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.17.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.2.0",

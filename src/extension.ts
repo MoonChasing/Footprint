@@ -5,9 +5,10 @@ import { randomUUID } from 'crypto';
 import { ActivityTracker } from './tracker/ActivityTracker';
 import { StatusBarController } from './ui/StatusBarController';
 import { ReportPanel } from './ui/ReportPanel';
-import { initDatabase, getDatabase, closeDatabase, getDatabasePath, setOnReloadCallback } from './database/Database';
+import { initDatabase, getDatabase, closeDatabase, getDatabasePath } from './database/Database';
 import { getTodayTotalMs, exportAllData } from './database/queries';
 import { getConfig } from './config';
+import { formatDateUtc8 } from './utils/tz';
 
 let tracker: ActivityTracker | undefined;
 let statusBar: StatusBarController | undefined;
@@ -18,9 +19,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const windowId = randomUUID();
 
-    // Initialize database (creates ~/.timetrack/data.db if needed)
+    // Initialize database (creates ~/.timetrack/data.db if needed).
+    // Synchronous now that we're on better-sqlite3 — no async init dance.
     try {
-        await initDatabase(context.extensionPath, windowId);
+        initDatabase(context.extensionPath, windowId);
     } catch (e) {
         vscode.window.showErrorMessage(`TimeTrack: Failed to initialize database: ${e}`);
         return;
@@ -41,9 +43,6 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize tracker
     tracker = new ActivityTracker(statusBar, windowId);
     context.subscriptions.push(tracker);
-
-    // Register reload callback so tracker can fix up session IDs after merge-flush
-    setOnReloadCallback(() => tracker?.onDatabaseReloaded());
 
     // Register commands
     context.subscriptions.push(
@@ -94,7 +93,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     defaultUri: vscode.Uri.file(
                         path.join(
                             vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? require('os').homedir(),
-                            `timetrack-export-${formatDate(new Date())}.json`
+                            `timetrack-export-${formatDateUtc8()}.json`
                         )
                     ),
                     filters: { 'JSON': ['json'] },
@@ -121,18 +120,18 @@ export async function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
     console.log('[TimeTrack] Extension deactivating...');
 
-    // Tracker disposal handles closing sessions and flushing line changes
-    // (done via context.subscriptions)
+    // CRITICAL: dispose the tracker BEFORE closing the database, so that
+    // the current session's closeSession() UPDATE lands while the DB is
+    // still open. context.subscriptions disposal happens AFTER deactivate()
+    // returns, which is too late — we must do it explicitly here.
+    try {
+        tracker?.dispose();
+    } catch (e) {
+        console.error('[TimeTrack] Tracker dispose failed:', e);
+    }
+    tracker = undefined;
 
-    // Close database connection and flush to disk
     closeDatabase();
 
     console.log('[TimeTrack] Extension deactivated.');
-}
-
-function formatDate(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
 }

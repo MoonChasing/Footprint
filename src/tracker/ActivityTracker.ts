@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { TrackerState, EnvironmentContext } from '../types';
-import { getDatabase, markOrphanCleanupPending } from '../database/Database';
-import { insertSession, updateSessionEndTime, closeSession, closeOrphanedSessions, findActiveSessionId } from '../database/queries';
+import { getDatabase } from '../database/Database';
+import { insertSession, updateSessionEndTime, closeSession, closeOrphanedSessions } from '../database/queries';
 import { getEnvironmentContext, getProjectContext } from '../env/EnvironmentInfo';
 import { getConfig, shouldExcludeFile } from '../config';
 import { IdleDetector } from './IdleDetector';
@@ -34,28 +34,28 @@ export class ActivityTracker implements vscode.Disposable {
 
         const config = getConfig();
 
-        // Initialize idle detector
         this.idleDetector = new IdleDetector(config.idleTimeout, {
             onIdleStart: () => this.onBecameIdle(),
             onIdleEnd: () => this.onBecameActive(),
         });
 
-        // Initialize line change counter
-        this.lineChangeCounter = new LineChangeCounter(this.envContext, this.windowId);
+        // Line counter only records when this tracker says recording is allowed.
+        this.lineChangeCounter = new LineChangeCounter(
+            this.envContext,
+            this.windowId,
+            doc => this.shouldRecordEdit(doc),
+        );
 
-        // Clean up orphaned sessions from previous crashes
+        // Clean up orphaned sessions from previous crashes / other dead windows.
         this.recoverCrashedSessions();
 
-        // Register event listeners
         this.registerListeners();
 
-        // Start heartbeat
         this.heartbeatTimer = setInterval(
             () => this.tick(),
             config.heartbeatInterval * 1000
         );
 
-        // Check if a window is already focused and has an active editor
         if (vscode.window.state.focused) {
             this.state = 'active';
             const editor = vscode.window.activeTextEditor;
@@ -65,22 +65,15 @@ export class ActivityTracker implements vscode.Disposable {
         }
     }
 
-    /**
-     * Manually pause tracking.
-     */
     pause(): void {
         this.isPaused = true;
         this.closeCurrentSession();
         this.statusBar.setPaused(true);
     }
 
-    /**
-     * Resume tracking after manual pause.
-     */
     resume(): void {
         this.isPaused = false;
         this.statusBar.setPaused(false);
-        // Re-check current state
         if (vscode.window.state.focused && !this.idleDetector.isIdle) {
             this.state = 'active';
             const editor = vscode.window.activeTextEditor;
@@ -91,7 +84,6 @@ export class ActivityTracker implements vscode.Disposable {
     }
 
     private registerListeners(): void {
-        // File switch
         this.disposables.push(
             vscode.window.onDidChangeActiveTextEditor(editor => {
                 this.idleDetector.recordActivity();
@@ -99,7 +91,6 @@ export class ActivityTracker implements vscode.Disposable {
             })
         );
 
-        // Window focus/blur
         this.disposables.push(
             vscode.window.onDidChangeWindowState(state => {
                 if (state.focused) {
@@ -110,7 +101,6 @@ export class ActivityTracker implements vscode.Disposable {
             })
         );
 
-        // Text document changes (idle reset + line counting)
         this.disposables.push(
             vscode.workspace.onDidChangeTextDocument(event => {
                 const scheme = event.document.uri.scheme;
@@ -120,21 +110,18 @@ export class ActivityTracker implements vscode.Disposable {
             })
         );
 
-        // Cursor movement (idle reset)
         this.disposables.push(
             vscode.window.onDidChangeTextEditorSelection(() => {
                 this.idleDetector.recordActivity();
             })
         );
 
-        // Scrolling (idle reset)
         this.disposables.push(
             vscode.window.onDidChangeTextEditorVisibleRanges(() => {
                 this.idleDetector.recordActivity();
             })
         );
 
-        // Configuration changes
         this.disposables.push(
             vscode.workspace.onDidChangeConfiguration(event => {
                 if (event.affectsConfiguration('timetrack')) {
@@ -150,26 +137,23 @@ export class ActivityTracker implements vscode.Disposable {
         if (this.state === 'active' && this.currentSessionId) {
             try {
                 const db = getDatabase();
-                updateSessionEndTime(db, this.currentSessionId, Date.now());
+                // Clamp end_time to last real activity to avoid inflating the
+                // session past the user's actual editing time (e.g. they
+                // stopped typing 90s ago but idle threshold is 2min).
+                const clamped = Math.min(Date.now(), this.idleDetector.lastActivity);
+                updateSessionEndTime(db, this.currentSessionId, clamped);
             } catch (e) {
                 console.error('[TimeTrack] Heartbeat update failed:', e);
             }
-
-            // Periodic line change flush
-            this.lineChangeCounter.maybeFlushAll();
         }
 
-        // Update status bar
         this.statusBar.refresh();
     }
 
     private onFileSwitch(editor: vscode.TextEditor | undefined): void {
         if (this.isPaused) return;
 
-        // Flush line changes for the old file
-        this.lineChangeCounter.flushFile(this.currentFile);
-
-        // Close current session
+        // Close current session FIRST (so its end_time is stamped before we change state).
         this.closeCurrentSession();
 
         if (editor && this.shouldTrack(editor.document)) {
@@ -244,11 +228,16 @@ export class ActivityTracker implements vscode.Disposable {
         }
     }
 
+    /**
+     * Close the current session. Stamps end_time at last-known activity
+     * (not Date.now()) so that idle/blur don't inflate the duration.
+     */
     private closeCurrentSession(): void {
         if (this.currentSessionId) {
             try {
                 const db = getDatabase();
-                closeSession(db, this.currentSessionId, Date.now());
+                const endTime = Math.min(Date.now(), this.idleDetector.lastActivity);
+                closeSession(db, this.currentSessionId, endTime);
             } catch (e) {
                 console.error('[TimeTrack] Failed to close session:', e);
             }
@@ -260,27 +249,26 @@ export class ActivityTracker implements vscode.Disposable {
         try {
             const db = getDatabase();
             closeOrphanedSessions(db, this.windowId);
-            markOrphanCleanupPending();
         } catch (e) {
             console.error('[TimeTrack] Failed to recover crashed sessions:', e);
         }
     }
 
+    /**
+     * Should this document be tracked for session time?
+     */
     private shouldTrack(document: vscode.TextDocument): boolean {
         const config = getConfig();
 
-        // Skip untitled files unless configured
         if (document.uri.scheme === 'untitled' && !config.trackUntitled) {
             return false;
         }
 
-        // Track file:// (local) and vscode-remote:// (SSH, WSL, container) schemes
         const trackableSchemes = ['file', 'vscode-remote'];
         if (!trackableSchemes.includes(document.uri.scheme)) {
             return false;
         }
 
-        // Check exclude patterns
         const filePath = document.uri.fsPath || document.uri.path;
         if (shouldExcludeFile(filePath, config.excludePatterns)) {
             return false;
@@ -289,11 +277,21 @@ export class ActivityTracker implements vscode.Disposable {
         return true;
     }
 
+    /**
+     * Should this document's edits be recorded as line changes?
+     * Same predicate as shouldTrack PLUS the tracker must not be paused.
+     * Auto-formatters / LSP edits while the window is unfocused or idle
+     * still count (the edits are real), but paused state suppresses them.
+     */
+    private shouldRecordEdit(document: vscode.TextDocument): boolean {
+        if (this.isPaused) return false;
+        return this.shouldTrack(document);
+    }
+
     private onConfigChange(): void {
         const config = getConfig();
         this.idleDetector.updateTimeout(config.idleTimeout);
 
-        // Restart heartbeat with new interval
         if (this.heartbeatTimer) {
             clearInterval(this.heartbeatTimer);
         }
@@ -303,39 +301,19 @@ export class ActivityTracker implements vscode.Disposable {
         );
     }
 
-    /**
-     * Called after the database is reloaded from disk (merge-flush cycle).
-     * Re-queries the active session ID since IDs may have shifted.
-     */
-    onDatabaseReloaded(): void {
-        if (this.currentSessionId && this.state === 'active') {
-            try {
-                const db = getDatabase();
-                this.currentSessionId = findActiveSessionId(db, this.windowId);
-            } catch (e) {
-                console.error('[TimeTrack] Failed to re-query session after reload:', e);
-            }
-        }
-    }
-
     dispose(): void {
-        // Close current session
+        // Close current session first — its UPDATE lands durably before the
+        // database is closed by the caller (see extension.ts deactivate()).
         this.closeCurrentSession();
 
-        // Flush remaining line changes
-        this.lineChangeCounter.flushAll();
-
-        // Stop heartbeat
         if (this.heartbeatTimer) {
             clearInterval(this.heartbeatTimer);
             this.heartbeatTimer = null;
         }
 
-        // Dispose sub-modules
         this.idleDetector.dispose();
         this.lineChangeCounter.dispose();
 
-        // Dispose event listeners
         for (const d of this.disposables) {
             d.dispose();
         }

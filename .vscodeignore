@@ -1,7 +1,6 @@
 .vscode-test/
 src/
 test/
-node_modules/
 .gitignore
 tsconfig.json
 tsconfig.webview.json
@@ -11,3 +10,20 @@ package-lock.json
 **/*.map
 **/*.ts
 !dist/**
+
+# Exclude entire node_modules tree EXCEPT better-sqlite3 (native module
+# loaded by dist/extension.js at runtime via require('better-sqlite3')).
+node_modules/**
+!node_modules/better-sqlite3/lib/**
+!node_modules/better-sqlite3/build/Release/better_sqlite3.node
+!node_modules/better-sqlite3/package.json
+!node_modules/bindings/**
+!node_modules/file-uri-to-path/**
+
+# Build / dev artifacts that don't belong in the published extension
+.venv/
+.claude/
+.vscode/
+scripts/
+extension/
+*.vsix

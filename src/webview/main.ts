@@ -1,5 +1,6 @@
 import { Chart, registerables } from 'chart.js';
 import { WebviewRequest, WebviewResponse, FileSummary, DayEntry, HourBlock, ProjectSummary } from '../types';
+import { formatDateUtc8, dayRangeUtc8 } from '../utils/tz';
 
 // Register all Chart.js components
 Chart.register(...registerables);
@@ -20,8 +21,8 @@ let timelineChart: Chart | null = null;
 let lineChangesChart: Chart | null = null;
 let projectsChart: Chart | null = null;
 
-// Current date
-let currentDate = formatDate(new Date());
+// Current date — always UTC+8, regardless of where the webview runs.
+let currentDate = formatDateUtc8();
 
 // --- Initialization ---
 
@@ -103,8 +104,11 @@ function renderWeeklyChart(data: DayEntry[]) {
     if (weeklyChart) weeklyChart.destroy();
 
     const labels = data.map(d => {
-        const date = new Date(d.date + 'T00:00:00');
-        return date.toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' });
+        const { start } = dayRangeUtc8(d.date);
+        return new Date(start).toLocaleDateString('en', {
+            weekday: 'short', month: 'short', day: 'numeric',
+            timeZone: 'Asia/Shanghai',
+        });
     });
     const values = data.map(d => d.totalMs / 3600_000); // hours
 
@@ -362,13 +366,6 @@ function formatDuration(ms: number): string {
     const minutes = totalMin % 60;
     if (hours === 0) return `${minutes}m`;
     return `${hours}h ${minutes}m`;
-}
-
-function formatDate(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
 }
 
 function generateColors(count: number): string[] {

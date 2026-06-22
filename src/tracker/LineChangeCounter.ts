@@ -1,24 +1,33 @@
 import * as vscode from 'vscode';
-import { PendingLineChange, EnvironmentContext } from '../types';
+import { EnvironmentContext } from '../types';
 import { getDatabase } from '../database/Database';
 import { insertLineChange } from '../database/queries';
 
 /**
- * Accumulates line change counts per file in memory,
- * flushing to the database periodically or on file switch.
+ * Records line-change activity per-edit directly to the database.
+ *
+ * With better-sqlite3, every INSERT is durable on return, so we no longer
+ * buffer in an in-memory Map. This eliminates the previous data-loss
+ * window where edits sat in RAM for up to 60s before reaching SQLite.
+ *
+ * The `shouldRecord` predicate is injected by ActivityTracker so the
+ * counter honors pause state, exclude patterns, and trackUntitled config.
  */
 export class LineChangeCounter implements vscode.Disposable {
-    private pending = new Map<string, PendingLineChange>();
-    private lastFlushTime = Date.now();
     private disposables: vscode.Disposable[] = [];
     private envContext: EnvironmentContext;
     private windowId: string;
+    private shouldRecord: (document: vscode.TextDocument) => boolean;
 
-    constructor(envContext: EnvironmentContext, windowId: string) {
+    constructor(
+        envContext: EnvironmentContext,
+        windowId: string,
+        shouldRecord: (document: vscode.TextDocument) => boolean,
+    ) {
         this.envContext = envContext;
         this.windowId = windowId;
+        this.shouldRecord = shouldRecord;
 
-        // Listen for text document changes
         this.disposables.push(
             vscode.workspace.onDidChangeTextDocument(event => {
                 this.onDocumentChange(event);
@@ -26,82 +35,33 @@ export class LineChangeCounter implements vscode.Disposable {
         );
     }
 
-    /**
-     * Process a text document change event.
-     */
     private onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
-        // Skip non-trackable schemes (output panels, git diff, etc.)
-        const scheme = event.document.uri.scheme;
+        const doc = event.document;
+        const scheme = doc.uri.scheme;
         if (scheme !== 'file' && scheme !== 'vscode-remote') {
             return;
         }
-
-        const filePath = event.document.uri.fsPath;
-        let entry = this.pending.get(filePath);
-        if (!entry) {
-            entry = { added: 0, deleted: 0 };
-            this.pending.set(filePath, entry);
+        if (!this.shouldRecord(doc)) {
+            return;
         }
 
+        let added = 0;
+        let deleted = 0;
         for (const change of event.contentChanges) {
-            // Lines deleted = lines spanned by the replaced range
-            const linesDeleted = change.range.end.line - change.range.start.line;
-            // Lines added = newlines in the inserted text
-            const linesAdded = (change.text.match(/\n/g) || []).length;
-
-            entry.added += linesAdded;
-            entry.deleted += linesDeleted;
+            deleted += change.range.end.line - change.range.start.line;
+            added += (change.text.match(/\n/g) || []).length;
         }
+        if (added === 0 && deleted === 0) {
+            return;
+        }
+
+        this.writeToDb(doc.uri.fsPath, added, deleted);
     }
 
-    /**
-     * Flush pending changes for a specific file (e.g., on file switch).
-     */
-    flushFile(filePath: string | null): void {
-        if (!filePath) return;
-        const entry = this.pending.get(filePath);
-        if (entry && (entry.added > 0 || entry.deleted > 0)) {
-            this.writeToDb(filePath, entry);
-            this.pending.delete(filePath);
-        }
-    }
-
-    /**
-     * Periodic flush — all files with pending changes.
-     * Called from heartbeat tick. Only flushes if >= 60s since last flush.
-     */
-    maybeFlushAll(): void {
-        const now = Date.now();
-        if (now - this.lastFlushTime < 60_000) return;
-
-        for (const [filePath, entry] of this.pending) {
-            if (entry.added > 0 || entry.deleted > 0) {
-                this.writeToDb(filePath, entry);
-            }
-        }
-        this.pending.clear();
-        this.lastFlushTime = now;
-    }
-
-    /**
-     * Force flush all pending changes (e.g., on deactivation).
-     */
-    flushAll(): void {
-        for (const [filePath, entry] of this.pending) {
-            if (entry.added > 0 || entry.deleted > 0) {
-                this.writeToDb(filePath, entry);
-            }
-        }
-        this.pending.clear();
-        this.lastFlushTime = Date.now();
-    }
-
-    private writeToDb(filePath: string, entry: PendingLineChange): void {
+    private writeToDb(filePath: string, added: number, deleted: number): void {
         try {
             const db = getDatabase();
-            // Use workspace folders to find project context by path prefix matching
             const project = this.getProjectForFile(filePath);
-
             insertLineChange(db, {
                 timestamp: Date.now(),
                 machineName: this.envContext.machineName,
@@ -109,13 +69,12 @@ export class LineChangeCounter implements vscode.Disposable {
                 remoteHost: this.envContext.remoteHost,
                 projectPath: project.projectPath,
                 filePath,
-                linesAdded: entry.added,
-                linesDeleted: entry.deleted,
+                linesAdded: added,
+                linesDeleted: deleted,
                 windowId: this.windowId,
             });
         } catch (e) {
-            // Don't crash the extension on DB write failure
-            console.error('[TimeTrack] Failed to write line changes:', e);
+            console.error('[TimeTrack] Failed to write line change:', e);
         }
     }
 
@@ -136,7 +95,6 @@ export class LineChangeCounter implements vscode.Disposable {
     }
 
     dispose(): void {
-        this.flushAll();
         for (const d of this.disposables) {
             d.dispose();
         }
