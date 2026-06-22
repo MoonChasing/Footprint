@@ -45,19 +45,77 @@ header h1 {
 }
 
 .range-picker {
+    position: relative;
     display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
     align-items: center;
 }
 
-.range-preset {
+/* Trigger button — the only entry into the date picker. Its label reflects
+   the current selection so the user always knows what range is active. */
+.range-trigger {
     background: var(--card-bg);
     color: var(--text-primary);
     border: 1px solid var(--border);
     padding: 6px 12px;
     border-radius: 4px;
     font-size: 0.9em;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.range-trigger:hover,
+.range-trigger[aria-expanded="true"] {
+    border-color: var(--accent);
+}
+
+.range-trigger-icon {
+    font-size: 0.95em;
+}
+
+.range-trigger-caret {
+    font-size: 0.7em;
+    color: var(--text-secondary);
+    margin-left: 2px;
+}
+
+/* Popover floats below the trigger and closes on outside click / Esc. */
+.range-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 100;
+    min-width: 320px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.range-popover[hidden] {
+    display: none;
+}
+
+.range-popover-presets {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+}
+
+.range-preset {
+    background: var(--card-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.85em;
     font-family: inherit;
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s;
@@ -73,26 +131,60 @@ header h1 {
     border-color: var(--accent);
 }
 
+.range-popover-divider {
+    height: 1px;
+    background: var(--border);
+}
+
+.range-popover-custom {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.range-popover-label {
+    font-size: 0.78em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 .custom-range {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
-    width: 100%;
-    justify-content: flex-end;
 }
 
 .custom-range input[type="date"] {
-    background: var(--card-bg);
+    flex: 1;
+    background: var(--bg-primary);
     color: var(--text-primary);
     border: 1px solid var(--border);
-    padding: 6px 12px;
+    padding: 5px 8px;
     border-radius: 4px;
-    font-size: 0.9em;
+    font-size: 0.85em;
     font-family: inherit;
 }
 
 .range-sep {
     color: var(--text-secondary);
+}
+
+.range-apply {
+    align-self: flex-end;
+    background: var(--accent);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--accent);
+    padding: 5px 14px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.12s;
+}
+
+.range-apply:hover {
+    opacity: 0.85;
 }
 
 .summary-cards {

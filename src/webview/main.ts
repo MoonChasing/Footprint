@@ -25,13 +25,15 @@ let languagesChart: Chart | null = null;
 // --- Range state ---
 //
 // Time-range selection used by every chart on this page. We default to "today"
-// (preserves the prior behavior). The user can switch via preset buttons or by
-// typing into the two date inputs revealed by the "自定义" button.
-type Preset = 'today' | 'thisWeek' | 'thisMonth' | 'last7' | 'last30' | 'custom';
+// (preserves the prior behavior). A single trigger button opens a popover that
+// hosts both preset shortcuts and a custom date-range input. The trigger's
+// label always reflects the current selection so the entry point doubles as
+// a status indicator.
+type Preset = 'today' | 'thisWeek' | 'thisMonth' | 'last7' | 'last30';
 type Range = { startDate: string; endDate: string };
 
 let currentRange: Range = computePresetRange('today');
-let currentPreset: Preset = 'today';
+let currentPreset: Preset | null = 'today';
 
 function computePresetRange(preset: Preset): Range {
     switch (preset) {
@@ -47,52 +49,123 @@ function computePresetRange(preset: Preset): Range {
             return { startDate: daysAgoUtc8(6), endDate: formatDateUtc8() };
         case 'last30':
             return { startDate: daysAgoUtc8(29), endDate: formatDateUtc8() };
-        case 'custom':
-            // Caller is responsible for filling in start/end via the inputs.
-            return currentRange;
+    }
+}
+
+const PRESET_LABELS: Record<Preset, string> = {
+    today: '今天',
+    thisWeek: '本周',
+    thisMonth: '本月',
+    last7: '近 7 天',
+    last30: '近 30 天',
+};
+
+/** Detect whether a range matches a known preset; null = custom. */
+function matchPreset(range: Range): Preset | null {
+    const presets: Preset[] = ['today', 'thisWeek', 'thisMonth', 'last7', 'last30'];
+    for (const p of presets) {
+        const r = computePresetRange(p);
+        if (r.startDate === range.startDate && r.endDate === range.endDate) return p;
+    }
+    return null;
+}
+
+/** Render the trigger button's label so it summarizes the current range. */
+function renderTriggerLabel(triggerLabel: HTMLElement) {
+    if (currentPreset) {
+        // For "today" the range is one day and the label suffix would just
+        // repeat the same date twice — keep it short.
+        if (currentPreset === 'today') {
+            triggerLabel.textContent = `${PRESET_LABELS.today}  ·  ${currentRange.startDate}`;
+        } else {
+            triggerLabel.textContent = `${PRESET_LABELS[currentPreset]}  ·  ${currentRange.startDate} — ${currentRange.endDate}`;
+        }
+    } else {
+        triggerLabel.textContent = `自定义  ·  ${currentRange.startDate} — ${currentRange.endDate}`;
     }
 }
 
 // --- Initialization ---
 
 function init() {
-    // Wire up preset buttons
-    const presetButtons = document.querySelectorAll<HTMLButtonElement>('.range-preset');
-    const customRange = document.getElementById('customRange') as HTMLDivElement;
+    const trigger = document.getElementById('rangeTrigger') as HTMLButtonElement;
+    const triggerLabel = document.getElementById('rangeTriggerLabel') as HTMLSpanElement;
+    const popover = document.getElementById('rangePopover') as HTMLDivElement;
+    const presetButtons = popover.querySelectorAll<HTMLButtonElement>('.range-preset');
     const rangeStart = document.getElementById('rangeStart') as HTMLInputElement;
     const rangeEnd = document.getElementById('rangeEnd') as HTMLInputElement;
+    const applyBtn = document.getElementById('rangeApply') as HTMLButtonElement;
+
+    // --- Popover open/close ---
+
+    function openPopover() {
+        popover.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+        // Seed the custom-range inputs with whatever's currently active so the
+        // user has a starting point if they want to tweak.
+        rangeStart.value = currentRange.startDate;
+        rangeEnd.value = currentRange.endDate;
+        syncActivePreset();
+    }
+
+    function closePopover() {
+        popover.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    function syncActivePreset() {
+        presetButtons.forEach(b => {
+            b.classList.toggle('active', b.dataset.preset === currentPreset);
+        });
+    }
+
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (popover.hidden) openPopover(); else closePopover();
+    });
+
+    // Close on outside click — clicking inside the popover should NOT close it.
+    document.addEventListener('click', (e) => {
+        if (popover.hidden) return;
+        if (e.target instanceof Node && (popover.contains(e.target) || trigger.contains(e.target))) return;
+        closePopover();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !popover.hidden) closePopover();
+    });
+
+    // --- Preset clicks: apply immediately and close the popover ---
 
     presetButtons.forEach(btn => {
         btn.addEventListener('click', () => {
             const preset = btn.dataset.preset as Preset;
             currentPreset = preset;
-            presetButtons.forEach(b => b.classList.toggle('active', b === btn));
-
-            if (preset === 'custom') {
-                customRange.hidden = false;
-                // Seed inputs from whatever the previous range was so the user
-                // has a starting point to tweak instead of empty fields.
-                rangeStart.value = currentRange.startDate;
-                rangeEnd.value = currentRange.endDate;
-                return;
-            }
-            customRange.hidden = true;
             currentRange = computePresetRange(preset);
+            syncActivePreset();
+            renderTriggerLabel(triggerLabel);
+            closePopover();
             loadAllData();
         });
     });
 
-    const onCustomChange = () => {
-        if (currentPreset !== 'custom') return;
+    // --- Custom-range Apply: explicit confirmation, not on every input change.
+    // This avoids triggering two queries when the user edits both inputs. ---
+
+    applyBtn.addEventListener('click', () => {
         if (!rangeStart.value || !rangeEnd.value) return;
-        // Normalize swapped inputs so endDate >= startDate.
         let s = rangeStart.value, e = rangeEnd.value;
         if (s > e) [s, e] = [e, s];
         currentRange = { startDate: s, endDate: e };
+        currentPreset = matchPreset(currentRange);
+        syncActivePreset();
+        renderTriggerLabel(triggerLabel);
+        closePopover();
         loadAllData();
-    };
-    rangeStart.addEventListener('change', onCustomChange);
-    rangeEnd.addEventListener('change', onCustomChange);
+    });
+
+    // Initial label
+    renderTriggerLabel(triggerLabel);
 
     // Listen for messages from the extension host
     window.addEventListener('message', (event) => {

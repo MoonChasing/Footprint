@@ -10,17 +10,30 @@
         <header>
             <h1>TimeTrack Report</h1>
             <div class="range-picker">
-                <button class="range-preset active" data-preset="today">今天</button>
-                <button class="range-preset" data-preset="thisWeek">本周</button>
-                <button class="range-preset" data-preset="thisMonth">本月</button>
-                <button class="range-preset" data-preset="last7">近 7 天</button>
-                <button class="range-preset" data-preset="last30">近 30 天</button>
-                <button class="range-preset" data-preset="custom">自定义</button>
-            </div>
-            <div class="custom-range" id="customRange" hidden>
-                <input type="date" id="rangeStart" />
-                <span class="range-sep">—</span>
-                <input type="date" id="rangeEnd" />
+                <button class="range-trigger" id="rangeTrigger" aria-haspopup="dialog" aria-expanded="false">
+                    <span class="range-trigger-icon">📅</span>
+                    <span class="range-trigger-label" id="rangeTriggerLabel">今天</span>
+                    <span class="range-trigger-caret">▾</span>
+                </button>
+                <div class="range-popover" id="rangePopover" role="dialog" hidden>
+                    <div class="range-popover-presets">
+                        <button class="range-preset" data-preset="today">今天</button>
+                        <button class="range-preset" data-preset="thisWeek">本周</button>
+                        <button class="range-preset" data-preset="thisMonth">本月</button>
+                        <button class="range-preset" data-preset="last7">近 7 天</button>
+                        <button class="range-preset" data-preset="last30">近 30 天</button>
+                    </div>
+                    <div class="range-popover-divider"></div>
+                    <div class="range-popover-custom">
+                        <label class="range-popover-label">自定义范围</label>
+                        <div class="custom-range">
+                            <input type="date" id="rangeStart" />
+                            <span class="range-sep">—</span>
+                            <input type="date" id="rangeEnd" />
+                        </div>
+                        <button class="range-apply" id="rangeApply">应用</button>
+                    </div>
+                </div>
             </div>
         </header>
         <section class="summary-cards">
