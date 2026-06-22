@@ -46,6 +46,7 @@ export interface LineChange {
     filePath: string;
     linesAdded: number;
     linesDeleted: number;
+    windowId?: string;
 }
 
 /** Accumulated line changes in memory before flush */

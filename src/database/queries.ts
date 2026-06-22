@@ -94,16 +94,28 @@ export function closeOrphanedSessions(db: SqlJsDatabase, currentWindowId: string
  */
 export function insertLineChange(db: SqlJsDatabase, change: Omit<LineChange, 'id'>): void {
     run(db, `
-        INSERT INTO line_changes (timestamp, machine_name, remote_type, remote_host, project_path, file_path, lines_added, lines_deleted)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO line_changes (timestamp, machine_name, remote_type, remote_host, project_path, file_path, lines_added, lines_deleted, window_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
         change.timestamp, change.machineName, change.remoteType, change.remoteHost,
-        change.projectPath, change.filePath, change.linesAdded, change.linesDeleted
+        change.projectPath, change.filePath, change.linesAdded, change.linesDeleted,
+        change.windowId ?? ''
     );
     markDirty();
 }
 
 // --- Read Operations ---
+
+/**
+ * Find the active session ID for a given window.
+ */
+export function findActiveSessionId(db: SqlJsDatabase, windowId: string): number | null {
+    const row = get<{ id: number }>(db,
+        'SELECT id FROM sessions WHERE window_id = ? AND is_active = 1 ORDER BY end_time DESC LIMIT 1',
+        windowId
+    );
+    return row?.id ?? null;
+}
 
 /**
  * Get today's total tracked time in milliseconds.
@@ -275,7 +287,8 @@ export function exportAllData(db: SqlJsDatabase): { sessions: Session[]; lineCha
     const lineChanges = all<LineChange>(db, `
         SELECT id, timestamp, machine_name as machineName, remote_type as remoteType,
                remote_host as remoteHost, project_path as projectPath, file_path as filePath,
-               lines_added as linesAdded, lines_deleted as linesDeleted
+               lines_added as linesAdded, lines_deleted as linesDeleted,
+               window_id as windowId
         FROM line_changes ORDER BY timestamp
     `);
 

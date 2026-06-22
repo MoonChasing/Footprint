@@ -89,7 +89,7 @@
     "watch": "node esbuild.config.mjs --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "npm run build:prod && vsce package",
+    "package": "npm run build:prod && vsce package --allow-missing-repository",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

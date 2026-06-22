@@ -12,9 +12,11 @@ export class LineChangeCounter implements vscode.Disposable {
     private lastFlushTime = Date.now();
     private disposables: vscode.Disposable[] = [];
     private envContext: EnvironmentContext;
+    private windowId: string;
 
-    constructor(envContext: EnvironmentContext) {
+    constructor(envContext: EnvironmentContext, windowId: string) {
         this.envContext = envContext;
+        this.windowId = windowId;
 
         // Listen for text document changes
         this.disposables.push(
@@ -109,6 +111,7 @@ export class LineChangeCounter implements vscode.Disposable {
                 filePath,
                 linesAdded: entry.added,
                 linesDeleted: entry.deleted,
+                windowId: this.windowId,
             });
         } catch (e) {
             // Don't crash the extension on DB write failure

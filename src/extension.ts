@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { ActivityTracker } from './tracker/ActivityTracker';
 import { StatusBarController } from './ui/StatusBarController';
 import { ReportPanel } from './ui/ReportPanel';
-import { initDatabase, getDatabase, closeDatabase, getDatabasePath } from './database/Database';
+import { initDatabase, getDatabase, closeDatabase, getDatabasePath, setOnReloadCallback } from './database/Database';
 import { getTodayTotalMs, exportAllData } from './database/queries';
 import { getConfig } from './config';
 
@@ -15,9 +16,11 @@ let reportPanel: ReportPanel | undefined;
 export async function activate(context: vscode.ExtensionContext) {
     console.log('[TimeTrack] Extension activating...');
 
+    const windowId = randomUUID();
+
     // Initialize database (creates ~/.timetrack/data.db if needed)
     try {
-        await initDatabase(context.extensionPath);
+        await initDatabase(context.extensionPath, windowId);
     } catch (e) {
         vscode.window.showErrorMessage(`TimeTrack: Failed to initialize database: ${e}`);
         return;
@@ -36,8 +39,11 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(reportPanel);
 
     // Initialize tracker
-    tracker = new ActivityTracker(statusBar);
+    tracker = new ActivityTracker(statusBar, windowId);
     context.subscriptions.push(tracker);
+
+    // Register reload callback so tracker can fix up session IDs after merge-flush
+    setOnReloadCallback(() => tracker?.onDatabaseReloaded());
 
     // Register commands
     context.subscriptions.push(

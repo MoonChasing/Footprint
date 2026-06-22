@@ -1,6 +1,6 @@
 import { Database as SqlJsDatabase } from 'sql.js';
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 /**
  * Run all pending database migrations.
@@ -18,6 +18,9 @@ export function runMigrations(db: SqlJsDatabase): void {
 
     if (currentVersion < 1) {
         migrateToV1(db);
+    }
+    if (currentVersion < 2) {
+        migrateToV2(db);
     }
 
     // Update version
@@ -67,4 +70,8 @@ function migrateToV1(db: SqlJsDatabase): void {
     db.run('CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(is_active) WHERE is_active = 1');
     db.run('CREATE INDEX IF NOT EXISTS idx_line_changes_time ON line_changes(timestamp)');
     db.run('CREATE INDEX IF NOT EXISTS idx_line_changes_file ON line_changes(file_path, timestamp)');
+}
+
+function migrateToV2(db: SqlJsDatabase): void {
+    db.run("ALTER TABLE line_changes ADD COLUMN window_id TEXT NOT NULL DEFAULT ''");
 }

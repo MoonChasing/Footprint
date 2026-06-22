@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
 import { TrackerState, EnvironmentContext } from '../types';
-import { getDatabase } from '../database/Database';
-import { insertSession, updateSessionEndTime, closeSession, closeOrphanedSessions } from '../database/queries';
+import { getDatabase, markOrphanCleanupPending } from '../database/Database';
+import { insertSession, updateSessionEndTime, closeSession, closeOrphanedSessions, findActiveSessionId } from '../database/queries';
 import { getEnvironmentContext, getProjectContext } from '../env/EnvironmentInfo';
 import { getConfig, shouldExcludeFile } from '../config';
 import { IdleDetector } from './IdleDetector';
@@ -28,8 +27,8 @@ export class ActivityTracker implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
     private isPaused: boolean = false;
 
-    constructor(statusBar: StatusBarController) {
-        this.windowId = randomUUID();
+    constructor(statusBar: StatusBarController, windowId: string) {
+        this.windowId = windowId;
         this.envContext = getEnvironmentContext();
         this.statusBar = statusBar;
 
@@ -42,7 +41,7 @@ export class ActivityTracker implements vscode.Disposable {
         });
 
         // Initialize line change counter
-        this.lineChangeCounter = new LineChangeCounter(this.envContext);
+        this.lineChangeCounter = new LineChangeCounter(this.envContext, this.windowId);
 
         // Clean up orphaned sessions from previous crashes
         this.recoverCrashedSessions();
@@ -261,6 +260,7 @@ export class ActivityTracker implements vscode.Disposable {
         try {
             const db = getDatabase();
             closeOrphanedSessions(db, this.windowId);
+            markOrphanCleanupPending();
         } catch (e) {
             console.error('[TimeTrack] Failed to recover crashed sessions:', e);
         }
@@ -301,6 +301,21 @@ export class ActivityTracker implements vscode.Disposable {
             () => this.tick(),
             config.heartbeatInterval * 1000
         );
+    }
+
+    /**
+     * Called after the database is reloaded from disk (merge-flush cycle).
+     * Re-queries the active session ID since IDs may have shifted.
+     */
+    onDatabaseReloaded(): void {
+        if (this.currentSessionId && this.state === 'active') {
+            try {
+                const db = getDatabase();
+                this.currentSessionId = findActiveSessionId(db, this.windowId);
+            } catch (e) {
+                console.error('[TimeTrack] Failed to re-query session after reload:', e);
+            }
+        }
     }
 
     dispose(): void {
