@@ -88,12 +88,12 @@
     "watch": "node esbuild.config.mjs --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "rebuild:native": "electron-rebuild -v 37.3.1 -f -w better-sqlite3",
+    "rebuild:native": "electron-rebuild -v 42.2.0 -f -w better-sqlite3",
     "package": "npm run build:prod && npm run rebuild:native && vsce package --allow-missing-repository",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",

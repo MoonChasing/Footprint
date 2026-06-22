@@ -176,7 +176,7 @@ npm run watch
 npm run build:prod
 
 # Package as .vsix
-# 自动用 @electron/rebuild 把 better-sqlite3 重编到 Electron 37.3.1 ABI，
+# 自动用 @electron/rebuild 把 better-sqlite3 重编到 Electron 42.2.0 ABI，
 # 输出针对当前 VSCode 内嵌 runtime 可用的 vsix
 npm run package
 # → timetrack-0.1.0.vsix
@@ -185,7 +185,39 @@ npm run package
 code --install-extension timetrack-0.1.0.vsix
 ```
 
-如果 VSCode 升级到了新版（带新 Electron），改 `package.json` 里的 `rebuild:native` 脚本里的 `-v 37.3.1` 为对应 Electron 版本号即可。
+### VSCode 升级后的维护步骤
+
+`better-sqlite3` 是 native module，编译产物（`better_sqlite3.node`）跟 VSCode 内嵌的 Electron 版本一一对应。VSCode 升级到新版本带来新的 Electron 时，装上 .vsix 会报：
+
+```
+NODE_MODULE_VERSION X. This version of Node.js requires NODE_MODULE_VERSION Y
+```
+
+修复要分两步走，**通常只需要第 1 步**：
+
+**第 1 步：更新 `package.json` 里的 Electron 版本号**
+
+1. 在 VSCode 打开 `Help → About`，记下 `Electron: X.Y.Z` 这一行（不是上面的 VS Code 版本号）
+2. 改 `package.json` 里 `rebuild:native` 脚本的 `-v` 参数为这个版本号：
+   ```json
+   "rebuild:native": "electron-rebuild -v 42.2.0 -f -w better-sqlite3"
+   ```
+3. `npm run package` 重新打 vsix
+
+**第 2 步（仅当第 1 步编译失败）：升级 `better-sqlite3` 本身**
+
+如果 `npm run rebuild:native` 报一堆 `v8::External::Value` / `v8::PropertyCallbackInfo::This()` 之类的 C++ 编译错误，说明当前 `better-sqlite3` 版本的源码跟新版 V8 的 C++ API 不兼容，要升级 native module 本身：
+
+```bash
+npm install better-sqlite3@latest
+npm run package
+```
+
+每次 Electron 大版本升级（37 → 38 → 39 …）大概 1 年发生一次；对应的 better-sqlite3 大版本（11 → 12 …）更新频率与之相当。两次都顺手做掉就好。
+
+> **历史踩坑记录**：
+> - VSCode 1.104（Electron 37 / ABI 136）→ `better-sqlite3 11.10` ✓
+> - VSCode 1.125（Electron 42 / ABI 146）→ 必须升级到 `better-sqlite3 12.x`，因为 11.x 源码用了在新版 V8 已废弃的 API
 
 ---
 
