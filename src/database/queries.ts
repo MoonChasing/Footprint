@@ -1,5 +1,5 @@
 import type { Database as Db } from 'better-sqlite3';
-import { Session, LineChange, FileSummary, DayEntry, HourBlock, ProjectSummary } from '../types';
+import { Session, LineChange, FileSummary, DayEntry, HourBlock, ProjectSummary, LanguageSummary } from '../types';
 import { startOfDayUtc8, dayRangeUtc8, formatDateUtc8, shiftDateUtc8 } from '../utils/tz';
 
 // --- Write Operations ---
@@ -213,6 +213,27 @@ export function getProjectBreakdown(db: Db, startDate: string, endDate: string):
         GROUP BY project_path, machine_name, remote_type, remote_host
         ORDER BY totalMs DESC
     `).all(start, end) as ProjectSummary[];
+    return rows;
+}
+
+/**
+ * Get language breakdown for a single date (UTC+8 day).
+ * Groups sessions by language_id and counts both total time and distinct files.
+ * Sessions with NULL language_id (e.g. unrecognized extensions) are bucketed
+ * together under languageId=null.
+ */
+export function getLanguageBreakdown(db: Db, date: string): LanguageSummary[] {
+    const { start, end } = dayRangeUtc8(date);
+    const rows = db.prepare(`
+        SELECT
+            language_id as languageId,
+            COALESCE(SUM(end_time - start_time), 0) as totalMs,
+            COUNT(DISTINCT file_path) as fileCount
+        FROM sessions
+        WHERE start_time >= ? AND start_time < ?
+        GROUP BY language_id
+        ORDER BY totalMs DESC
+    `).all(start, end) as LanguageSummary[];
     return rows;
 }
 

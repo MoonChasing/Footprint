@@ -1,5 +1,5 @@
 import { Chart, registerables } from 'chart.js';
-import { WebviewRequest, WebviewResponse, FileSummary, DayEntry, HourBlock, ProjectSummary, RemoteType } from '../types';
+import { WebviewRequest, WebviewResponse, FileSummary, DayEntry, HourBlock, ProjectSummary, LanguageSummary, RemoteType } from '../types';
 import { formatDateUtc8, dayRangeUtc8 } from '../utils/tz';
 
 // Register all Chart.js components
@@ -20,6 +20,7 @@ let filesChart: Chart | null = null;
 let timelineChart: Chart | null = null;
 let lineChangesChart: Chart | null = null;
 let projectsChart: Chart | null = null;
+let languagesChart: Chart | null = null;
 
 // Current date — always UTC+8, regardless of where the webview runs.
 let currentDate = formatDateUtc8();
@@ -51,6 +52,7 @@ function loadAllData() {
     sendMessage({ type: 'getTimeline', date: currentDate });
     sendMessage({ type: 'getLineChanges', date: currentDate, limit: 10 });
     sendMessage({ type: 'getProjectBreakdown', startDate: currentDate, endDate: currentDate });
+    sendMessage({ type: 'getLanguageBreakdown', date: currentDate });
 }
 
 function sendMessage(message: WebviewRequest) {
@@ -78,6 +80,9 @@ function handleResponse(message: WebviewResponse) {
             break;
         case 'projectBreakdown':
             renderProjectsChart(message.data);
+            break;
+        case 'languageBreakdown':
+            renderLanguagesChart(message.data);
             break;
     }
 }
@@ -175,7 +180,9 @@ function renderFilesChart(data: FileSummary[]) {
                         label: (ctx) => formatDuration(data[ctx.dataIndex].totalMs),
                         afterLabel: (ctx) => {
                             const f = data[ctx.dataIndex];
-                            return `Lines: +${f.linesAdded} / -${f.linesDeleted}`;
+                            const parts = [`Lines: +${f.linesAdded} / -${f.linesDeleted}`];
+                            if (f.languageId) parts.push(`Lang: ${f.languageId}`);
+                            return parts.join('\n');
                         }
                     }
                 }
@@ -389,6 +396,52 @@ function renderProjectsChart(data: ProjectSummary[]) {
                                 ? 'local'
                                 : `${p.remoteType}${p.remoteHost ? ' → ' + p.remoteHost : ''}`;
                             return ` ${formatDuration(p.totalMs)}  •  ${where}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Render the Languages doughnut chart.
+ * Buckets sessions by their VSCode languageId (cpp / typescript / python / ...).
+ * Sessions whose languageId is null (binary files, unknown extensions) collapse
+ * into an "(unknown)" slice.
+ */
+function renderLanguagesChart(data: LanguageSummary[]) {
+    const canvas = document.getElementById('languagesChart') as HTMLCanvasElement;
+    if (languagesChart) languagesChart.destroy();
+    if (data.length === 0) {
+        languagesChart = null;
+        return;
+    }
+
+    const labels = data.map(l => l.languageId ?? '(unknown)');
+    const values = data.map(l => l.totalMs / 60_000);
+    const colors = generateColors(data.length);
+
+    languagesChart = new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                backgroundColor: colors,
+                borderWidth: 2,
+            }],
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'right' },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const l = data[ctx.dataIndex];
+                            const files = l.fileCount === 1 ? '1 file' : `${l.fileCount} files`;
+                            return ` ${formatDuration(l.totalMs)}  •  ${files}`;
                         }
                     }
                 }

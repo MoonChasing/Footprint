@@ -91,6 +91,11 @@ export class ReportPanel implements Disposable {
                     response = { type: 'timeline', data };
                     break;
                 }
+                case 'getLanguageBreakdown': {
+                    const data = queries.getLanguageBreakdown(db, message.date);
+                    response = { type: 'languageBreakdown', data };
+                    break;
+                }
                 default:
                     return;
             }

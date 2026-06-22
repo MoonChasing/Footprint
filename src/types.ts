@@ -104,6 +104,12 @@ export interface ProjectSummary {
     remoteHost: string | null;
 }
 
+export interface LanguageSummary {
+    languageId: string | null;
+    totalMs: number;
+    fileCount: number;
+}
+
 /** Webview message protocol */
 export type WebviewRequest =
     | { type: 'getDailySummary'; date: string }
@@ -111,7 +117,8 @@ export type WebviewRequest =
     | { type: 'getFileBreakdown'; date: string; limit: number }
     | { type: 'getProjectBreakdown'; startDate: string; endDate: string }
     | { type: 'getLineChanges'; date: string; limit: number }
-    | { type: 'getTimeline'; date: string };
+    | { type: 'getTimeline'; date: string }
+    | { type: 'getLanguageBreakdown'; date: string };
 
 export type WebviewResponse =
     | { type: 'dailySummary'; data: DailySummary }
@@ -119,4 +126,5 @@ export type WebviewResponse =
     | { type: 'fileBreakdown'; data: FileSummary[] }
     | { type: 'projectBreakdown'; data: ProjectSummary[] }
     | { type: 'lineChanges'; data: FileSummary[] }
-    | { type: 'timeline'; data: HourBlock[] };
+    | { type: 'timeline'; data: HourBlock[] }
+    | { type: 'languageBreakdown'; data: LanguageSummary[] };
