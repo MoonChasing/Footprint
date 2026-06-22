@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
+import * as fs from 'fs';
 import { Disposable } from 'vscode';
 import { WebviewRequest, WebviewResponse } from '../types';
 import { getDatabase } from '../database/Database';
@@ -9,6 +9,12 @@ import * as queries from '../database/queries';
  * Manages the Webview panel for displaying detailed time tracking reports.
  */
 export class ReportPanel implements Disposable {
+    /**
+     * viewType passed to createWebviewPanel and used by VSCode to associate
+     * persisted webviews with our serializer on next window restore.
+     */
+    static readonly viewType = 'timetrackReport';
+
     private panel: vscode.WebviewPanel | undefined;
     private extensionUri: vscode.Uri;
     private disposables: Disposable[] = [];
@@ -26,32 +32,60 @@ export class ReportPanel implements Disposable {
             return;
         }
 
-        this.panel = vscode.window.createWebviewPanel(
-            'timetrackReport',
+        const panel = vscode.window.createWebviewPanel(
+            ReportPanel.viewType,
             'TimeTrack Report',
             vscode.ViewColumn.One,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [
-                    vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview'),
-                ],
-            }
+            this.buildOptions(),
         );
+        this.adopt(panel);
+    }
+
+    /**
+     * Adopt a webview panel that VSCode handed back to us after a window
+     * restore (via WebviewPanelSerializer.deserializeWebviewPanel). The HTML
+     * is replaced unconditionally so the panel always renders the freshly
+     * installed UI — never a stale snapshot baked into VSCode's state.
+     */
+    adopt(panel: vscode.WebviewPanel): void {
+        // If we already have a panel (e.g. user invoked the command before
+        // the serializer fired), close the incoming one to avoid duplicates.
+        if (this.panel) {
+            panel.dispose();
+            this.panel.reveal(vscode.ViewColumn.One);
+            return;
+        }
+
+        this.panel = panel;
+        // VSCode preserves options across reloads, but explicitly reset
+        // localResourceRoots to be safe (esp. if extensionUri changed).
+        // The 'options' setter only exists on input options, not on the
+        // panel itself, so we rely on createWebviewPanel's initial config.
 
         this.panel.webview.html = this.getHtmlContent(this.panel.webview);
 
-        // Handle messages from the webview
         this.panel.webview.onDidReceiveMessage(
             (message: WebviewRequest) => this.handleMessage(message),
             undefined,
             this.disposables
         );
 
-        // Cleanup on close
         this.panel.onDidDispose(() => {
             this.panel = undefined;
         }, null, this.disposables);
+    }
+
+    /**
+     * Webview options shared between fresh-create and revive paths.
+     */
+    buildOptions(): vscode.WebviewPanelOptions & vscode.WebviewOptions {
+        return {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [
+                vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview'),
+            ],
+        };
     }
 
     private handleMessage(message: WebviewRequest): void {
@@ -107,6 +141,17 @@ export class ReportPanel implements Disposable {
     }
 
     private getHtmlContent(webview: vscode.Webview): string {
+        // Load the HTML body from the bundled index.html so changes to UI
+        // structure (range picker, chart titles, new sections) take effect
+        // without having to mirror the markup here.
+        const htmlPath = vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'index.html').fsPath;
+        const rawHtml = fs.readFileSync(htmlPath, 'utf-8');
+
+        // Extract the <body>…</body> contents — the wrapper <head> needs CSP
+        // and nonce-stamped script tags, which we build below.
+        const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        const bodyContent = bodyMatch ? bodyMatch[1] : rawHtml;
+
         const scriptUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'main.js')
         );
@@ -126,50 +171,7 @@ export class ReportPanel implements Disposable {
     <title>TimeTrack Report</title>
 </head>
 <body>
-    <div id="app">
-        <header>
-            <h1>TimeTrack Report</h1>
-            <div class="controls">
-                <input type="date" id="datePicker" />
-            </div>
-        </header>
-        <section class="summary-cards">
-            <div class="card">
-                <span class="card-label">Total Time</span>
-                <span class="card-value" id="totalTime">--</span>
-            </div>
-            <div class="card">
-                <span class="card-label">Files</span>
-                <span class="card-value" id="fileCount">--</span>
-            </div>
-            <div class="card">
-                <span class="card-label">Lines Changed</span>
-                <span class="card-value" id="linesChanged">--</span>
-            </div>
-        </section>
-        <section class="charts">
-            <div class="chart-container">
-                <h2>This Week</h2>
-                <canvas id="weeklyChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h2>Top Files Today</h2>
-                <canvas id="filesChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h2>Hourly Timeline</h2>
-                <canvas id="timelineChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h2>Line Changes</h2>
-                <canvas id="lineChangesChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h2>Projects</h2>
-                <canvas id="projectsChart"></canvas>
-            </div>
-        </section>
-    </div>
+${bodyContent}
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

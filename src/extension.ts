@@ -40,6 +40,18 @@ export async function activate(context: vscode.ExtensionContext) {
     reportPanel = new ReportPanel(context.extensionUri);
     context.subscriptions.push(reportPanel);
 
+    // When VSCode restores a window with the Report tab open from a previous
+    // session, this serializer hands us the persisted panel. We re-render its
+    // HTML with the freshly installed UI assets instead of letting VSCode
+    // resurrect whatever stale DOM it serialized last time.
+    context.subscriptions.push(
+        vscode.window.registerWebviewPanelSerializer(ReportPanel.viewType, {
+            deserializeWebviewPanel: async (panel) => {
+                reportPanel?.adopt(panel);
+            },
+        })
+    );
+
     // Initialize tracker
     tracker = new ActivityTracker(statusBar, windowId);
     context.subscriptions.push(tracker);
