@@ -1,5 +1,5 @@
 import { Chart, registerables } from 'chart.js';
-import { WebviewRequest, WebviewResponse, FileSummary, DayEntry, HourBlock, ProjectSummary } from '../types';
+import { WebviewRequest, WebviewResponse, FileSummary, DayEntry, HourBlock, ProjectSummary, RemoteType } from '../types';
 import { formatDateUtc8, dayRangeUtc8 } from '../utils/tz';
 
 // Register all Chart.js components
@@ -318,16 +318,52 @@ function renderLineChangesChart(data: FileSummary[]) {
     });
 }
 
+/**
+ * Build a compact, informative label for the Projects doughnut legend.
+ *
+ * Local rows just show the project name. Remote rows append a short
+ * "(tag: host)" segment where host is derived from remoteHost — NOT
+ * machineName, which is the local extension-host machine and would be
+ * misleading for remote rows.
+ */
+const REMOTE_TAGS: Record<Exclude<RemoteType, 'local'>, string> = {
+    'ssh-remote': 'ssh',
+    'wsl': 'wsl',
+    'dev-container': 'devc',
+    'codespaces': 'cs',
+};
+
+function buildProjectLabel(p: ProjectSummary): string {
+    if (p.remoteType === 'local') return p.projectName;
+
+    const tag = REMOTE_TAGS[p.remoteType];
+    let host = p.remoteHost ?? '';
+
+    // SSH hosts often come in as "user@server" — the user part is noise in a legend.
+    if (p.remoteType === 'ssh-remote' && host) {
+        const at = host.lastIndexOf('@');
+        if (at >= 0) host = host.slice(at + 1);
+        host = host.replace(/:\d+$/, '');
+    }
+
+    // Doughnut legend gets crowded fast; cap the host segment.
+    const MAX = 32;
+    if (host.length > MAX) host = host.slice(0, MAX - 1) + '…';
+
+    return host
+        ? `${p.projectName} (${tag}: ${host})`
+        : `${p.projectName} (${tag})`;
+}
+
 function renderProjectsChart(data: ProjectSummary[]) {
     const canvas = document.getElementById('projectsChart') as HTMLCanvasElement;
     if (projectsChart) projectsChart.destroy();
-
     if (data.length === 0) {
         projectsChart = null;
         return;
     }
 
-    const labels = data.map(p => `${p.projectName} (${p.remoteType}${p.machineName ? ' @ ' + p.machineName : ''})`);
+    const labels = data.map(buildProjectLabel);
     const values = data.map(p => p.totalMs / 60_000);
     const colors = generateColors(data.length);
 
@@ -349,7 +385,10 @@ function renderProjectsChart(data: ProjectSummary[]) {
                     callbacks: {
                         label: (ctx) => {
                             const p = data[ctx.dataIndex];
-                            return ` ${formatDuration(p.totalMs)}`;
+                            const where = p.remoteType === 'local'
+                                ? 'local'
+                                : `${p.remoteType}${p.remoteHost ? ' → ' + p.remoteHost : ''}`;
+                            return ` ${formatDuration(p.totalMs)}  •  ${where}`;
                         }
                     }
                 }

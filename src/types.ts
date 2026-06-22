@@ -101,6 +101,7 @@ export interface ProjectSummary {
     totalMs: number;
     machineName: string;
     remoteType: RemoteType;
+    remoteHost: string | null;
 }
 
 /** Webview message protocol */

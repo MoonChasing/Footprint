@@ -206,10 +206,11 @@ export function getProjectBreakdown(db: Db, startDate: string, endDate: string):
             project_path as projectPath,
             machine_name as machineName,
             remote_type as remoteType,
+            remote_host as remoteHost,
             COALESCE(SUM(end_time - start_time), 0) as totalMs
         FROM sessions
         WHERE start_time >= ? AND start_time < ?
-        GROUP BY project_path, machine_name, remote_type
+        GROUP BY project_path, machine_name, remote_type, remote_host
         ORDER BY totalMs DESC
     `).all(start, end) as ProjectSummary[];
     return rows;
