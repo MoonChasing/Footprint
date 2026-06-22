@@ -1,6 +1,6 @@
 import { Chart, registerables } from 'chart.js';
 import { WebviewRequest, WebviewResponse, FileSummary, DayEntry, HourBlock, ProjectSummary, LanguageSummary, RemoteType } from '../types';
-import { formatDateUtc8, dayRangeUtc8 } from '../utils/tz';
+import { formatDateUtc8, dayRangeUtc8, weekRangeUtc8, monthRangeUtc8, daysAgoUtc8 } from '../utils/tz';
 
 // Register all Chart.js components
 Chart.register(...registerables);
@@ -15,25 +15,84 @@ declare function acquireVsCodeApi(): {
 const vscode = acquireVsCodeApi();
 
 // Chart instances
-let weeklyChart: Chart | null = null;
+let overviewChart: Chart | null = null;
 let filesChart: Chart | null = null;
 let timelineChart: Chart | null = null;
 let lineChangesChart: Chart | null = null;
 let projectsChart: Chart | null = null;
 let languagesChart: Chart | null = null;
 
-// Current date — always UTC+8, regardless of where the webview runs.
-let currentDate = formatDateUtc8();
+// --- Range state ---
+//
+// Time-range selection used by every chart on this page. We default to "today"
+// (preserves the prior behavior). The user can switch via preset buttons or by
+// typing into the two date inputs revealed by the "自定义" button.
+type Preset = 'today' | 'thisWeek' | 'thisMonth' | 'last7' | 'last30' | 'custom';
+type Range = { startDate: string; endDate: string };
+
+let currentRange: Range = computePresetRange('today');
+let currentPreset: Preset = 'today';
+
+function computePresetRange(preset: Preset): Range {
+    switch (preset) {
+        case 'today': {
+            const today = formatDateUtc8();
+            return { startDate: today, endDate: today };
+        }
+        case 'thisWeek':
+            return weekRangeUtc8();
+        case 'thisMonth':
+            return monthRangeUtc8();
+        case 'last7':
+            return { startDate: daysAgoUtc8(6), endDate: formatDateUtc8() };
+        case 'last30':
+            return { startDate: daysAgoUtc8(29), endDate: formatDateUtc8() };
+        case 'custom':
+            // Caller is responsible for filling in start/end via the inputs.
+            return currentRange;
+    }
+}
 
 // --- Initialization ---
 
 function init() {
-    const datePicker = document.getElementById('datePicker') as HTMLInputElement;
-    datePicker.value = currentDate;
-    datePicker.addEventListener('change', (e) => {
-        currentDate = (e.target as HTMLInputElement).value;
-        loadAllData();
+    // Wire up preset buttons
+    const presetButtons = document.querySelectorAll<HTMLButtonElement>('.range-preset');
+    const customRange = document.getElementById('customRange') as HTMLDivElement;
+    const rangeStart = document.getElementById('rangeStart') as HTMLInputElement;
+    const rangeEnd = document.getElementById('rangeEnd') as HTMLInputElement;
+
+    presetButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const preset = btn.dataset.preset as Preset;
+            currentPreset = preset;
+            presetButtons.forEach(b => b.classList.toggle('active', b === btn));
+
+            if (preset === 'custom') {
+                customRange.hidden = false;
+                // Seed inputs from whatever the previous range was so the user
+                // has a starting point to tweak instead of empty fields.
+                rangeStart.value = currentRange.startDate;
+                rangeEnd.value = currentRange.endDate;
+                return;
+            }
+            customRange.hidden = true;
+            currentRange = computePresetRange(preset);
+            loadAllData();
+        });
     });
+
+    const onCustomChange = () => {
+        if (currentPreset !== 'custom') return;
+        if (!rangeStart.value || !rangeEnd.value) return;
+        // Normalize swapped inputs so endDate >= startDate.
+        let s = rangeStart.value, e = rangeEnd.value;
+        if (s > e) [s, e] = [e, s];
+        currentRange = { startDate: s, endDate: e };
+        loadAllData();
+    };
+    rangeStart.addEventListener('change', onCustomChange);
+    rangeEnd.addEventListener('change', onCustomChange);
 
     // Listen for messages from the extension host
     window.addEventListener('message', (event) => {
@@ -46,13 +105,14 @@ function init() {
 }
 
 function loadAllData() {
-    sendMessage({ type: 'getDailySummary', date: currentDate });
-    sendMessage({ type: 'getWeeklyOverview' });
-    sendMessage({ type: 'getFileBreakdown', date: currentDate, limit: 10 });
-    sendMessage({ type: 'getTimeline', date: currentDate });
-    sendMessage({ type: 'getLineChanges', date: currentDate, limit: 10 });
-    sendMessage({ type: 'getProjectBreakdown', startDate: currentDate, endDate: currentDate });
-    sendMessage({ type: 'getLanguageBreakdown', date: currentDate });
+    const { startDate, endDate } = currentRange;
+    sendMessage({ type: 'getDailySummary', startDate, endDate });
+    sendMessage({ type: 'getDailyOverview', startDate, endDate });
+    sendMessage({ type: 'getFileBreakdown', startDate, endDate, limit: 10 });
+    sendMessage({ type: 'getTimeline', startDate, endDate });
+    sendMessage({ type: 'getLineChanges', startDate, endDate, limit: 10 });
+    sendMessage({ type: 'getProjectBreakdown', startDate, endDate });
+    sendMessage({ type: 'getLanguageBreakdown', startDate, endDate });
 }
 
 function sendMessage(message: WebviewRequest) {
@@ -66,8 +126,8 @@ function handleResponse(message: WebviewResponse) {
         case 'dailySummary':
             updateSummaryCards(message.data.totalMs, message.data.files);
             break;
-        case 'weeklyOverview':
-            renderWeeklyChart(message.data);
+        case 'dailyOverview':
+            renderOverviewChart(message.data, message.bucket);
             break;
         case 'fileBreakdown':
             renderFilesChart(message.data);
@@ -104,20 +164,42 @@ function updateSummaryCards(totalMs: number, files: FileSummary[]) {
 
 // --- Charts ---
 
-function renderWeeklyChart(data: DayEntry[]) {
-    const canvas = document.getElementById('weeklyChart') as HTMLCanvasElement;
-    if (weeklyChart) weeklyChart.destroy();
+/**
+ * Render the time-overview bar chart.
+ *
+ * Backend bucketing (in queries.ts:getDailyOverview):
+ * - bucket='day' → one bar per UTC+8 day, label = "Mon Jun 22"
+ * - bucket='week' → one bar per ISO week, label = "Week of Jun 22"
+ *
+ * The H2 title above the canvas is also rewritten to match.
+ */
+function renderOverviewChart(data: DayEntry[], bucket: 'day' | 'week') {
+    const canvas = document.getElementById('overviewChart') as HTMLCanvasElement;
+    if (overviewChart) overviewChart.destroy();
+
+    // Rewrite the section heading to match the bucket granularity.
+    const heading = canvas.previousElementSibling;
+    if (heading && heading.tagName === 'H2') {
+        heading.textContent = bucket === 'day' ? 'By Day' : 'By Week';
+    }
 
     const labels = data.map(d => {
         const { start } = dayRangeUtc8(d.date);
-        return new Date(start).toLocaleDateString('en', {
-            weekday: 'short', month: 'short', day: 'numeric',
+        const date = new Date(start);
+        if (bucket === 'day') {
+            return date.toLocaleDateString('en', {
+                weekday: 'short', month: 'short', day: 'numeric',
+                timeZone: 'Asia/Shanghai',
+            });
+        }
+        return 'Week of ' + date.toLocaleDateString('en', {
+            month: 'short', day: 'numeric',
             timeZone: 'Asia/Shanghai',
         });
     });
     const values = data.map(d => d.totalMs / 3600_000); // hours
 
-    weeklyChart = new Chart(canvas, {
+    overviewChart = new Chart(canvas, {
         type: 'bar',
         data: {
             labels,

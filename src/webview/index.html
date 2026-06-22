@@ -9,8 +9,18 @@
     <div id="app">
         <header>
             <h1>TimeTrack Report</h1>
-            <div class="controls">
-                <input type="date" id="datePicker" />
+            <div class="range-picker">
+                <button class="range-preset active" data-preset="today">今天</button>
+                <button class="range-preset" data-preset="thisWeek">本周</button>
+                <button class="range-preset" data-preset="thisMonth">本月</button>
+                <button class="range-preset" data-preset="last7">近 7 天</button>
+                <button class="range-preset" data-preset="last30">近 30 天</button>
+                <button class="range-preset" data-preset="custom">自定义</button>
+            </div>
+            <div class="custom-range" id="customRange" hidden>
+                <input type="date" id="rangeStart" />
+                <span class="range-sep">—</span>
+                <input type="date" id="rangeEnd" />
             </div>
         </header>
         <section class="summary-cards">
@@ -29,15 +39,15 @@
         </section>
         <section class="charts">
             <div class="chart-container">
-                <h2>This Week</h2>
-                <canvas id="weeklyChart"></canvas>
+                <h2>By Day</h2>
+                <canvas id="overviewChart"></canvas>
             </div>
             <div class="chart-container">
-                <h2>Top Files Today</h2>
+                <h2>Top Files</h2>
                 <canvas id="filesChart"></canvas>
             </div>
             <div class="chart-container">
-                <h2>Hourly Timeline</h2>
+                <h2>Hour of Day</h2>
                 <canvas id="timelineChart"></canvas>
             </div>
             <div class="chart-container">

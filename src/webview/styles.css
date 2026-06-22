@@ -32,6 +32,8 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
     margin-bottom: 24px;
     padding-bottom: 16px;
     border-bottom: 1px solid var(--border);
@@ -42,13 +44,55 @@ header h1 {
     font-weight: 600;
 }
 
-.controls input[type="date"] {
+.range-picker {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.range-preset {
     background: var(--card-bg);
     color: var(--text-primary);
     border: 1px solid var(--border);
     padding: 6px 12px;
     border-radius: 4px;
     font-size: 0.9em;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.range-preset:hover {
+    border-color: var(--accent);
+}
+
+.range-preset.active {
+    background: var(--accent);
+    color: var(--vscode-button-foreground);
+    border-color: var(--accent);
+}
+
+.custom-range {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    justify-content: flex-end;
+}
+
+.custom-range input[type="date"] {
+    background: var(--card-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: inherit;
+}
+
+.range-sep {
+    color: var(--text-secondary);
 }
 
 .summary-cards {

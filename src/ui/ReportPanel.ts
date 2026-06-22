@@ -61,18 +61,18 @@ export class ReportPanel implements Disposable {
 
             switch (message.type) {
                 case 'getDailySummary': {
-                    const files = queries.getFileBreakdown(db, message.date, 100);
+                    const files = queries.getFileBreakdown(db, message.startDate, message.endDate, 100);
                     const totalMs = files.reduce((sum, f) => sum + f.totalMs, 0);
                     response = { type: 'dailySummary', data: { totalMs, files } };
                     break;
                 }
-                case 'getWeeklyOverview': {
-                    const data = queries.getWeeklyOverview(db);
-                    response = { type: 'weeklyOverview', data };
+                case 'getDailyOverview': {
+                    const { entries, bucket } = queries.getDailyOverview(db, message.startDate, message.endDate);
+                    response = { type: 'dailyOverview', data: entries, bucket };
                     break;
                 }
                 case 'getFileBreakdown': {
-                    const data = queries.getFileBreakdown(db, message.date, message.limit);
+                    const data = queries.getFileBreakdown(db, message.startDate, message.endDate, message.limit);
                     response = { type: 'fileBreakdown', data };
                     break;
                 }
@@ -82,17 +82,17 @@ export class ReportPanel implements Disposable {
                     break;
                 }
                 case 'getLineChanges': {
-                    const data = queries.getLineChanges(db, message.date, message.limit);
+                    const data = queries.getLineChanges(db, message.startDate, message.endDate, message.limit);
                     response = { type: 'lineChanges', data };
                     break;
                 }
                 case 'getTimeline': {
-                    const data = queries.getTimeline(db, message.date);
+                    const data = queries.getTimeline(db, message.startDate, message.endDate);
                     response = { type: 'timeline', data };
                     break;
                 }
                 case 'getLanguageBreakdown': {
-                    const data = queries.getLanguageBreakdown(db, message.date);
+                    const data = queries.getLanguageBreakdown(db, message.startDate, message.endDate);
                     response = { type: 'languageBreakdown', data };
                     break;
                 }

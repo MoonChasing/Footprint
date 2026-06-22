@@ -112,17 +112,17 @@ export interface LanguageSummary {
 
 /** Webview message protocol */
 export type WebviewRequest =
-    | { type: 'getDailySummary'; date: string }
-    | { type: 'getWeeklyOverview' }
-    | { type: 'getFileBreakdown'; date: string; limit: number }
+    | { type: 'getDailySummary'; startDate: string; endDate: string }
+    | { type: 'getDailyOverview'; startDate: string; endDate: string }
+    | { type: 'getFileBreakdown'; startDate: string; endDate: string; limit: number }
     | { type: 'getProjectBreakdown'; startDate: string; endDate: string }
-    | { type: 'getLineChanges'; date: string; limit: number }
-    | { type: 'getTimeline'; date: string }
-    | { type: 'getLanguageBreakdown'; date: string };
+    | { type: 'getLineChanges'; startDate: string; endDate: string; limit: number }
+    | { type: 'getTimeline'; startDate: string; endDate: string }
+    | { type: 'getLanguageBreakdown'; startDate: string; endDate: string };
 
 export type WebviewResponse =
     | { type: 'dailySummary'; data: DailySummary }
-    | { type: 'weeklyOverview'; data: DayEntry[] }
+    | { type: 'dailyOverview'; data: DayEntry[]; bucket: 'day' | 'week' }
     | { type: 'fileBreakdown'; data: FileSummary[] }
     | { type: 'projectBreakdown'; data: ProjectSummary[] }
     | { type: 'lineChanges'; data: FileSummary[] }
